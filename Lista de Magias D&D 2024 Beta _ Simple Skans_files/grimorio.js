@@ -11,6 +11,8 @@ document.addEventListener("DOMContentLoaded", function () {
     let indiceAtual = 0;
     let carregando = false;
     let primeiraCarga = true;
+    let imprimindo = false;
+    const magiasSelecionadas = new Set();
 
     // ============= ELEMENTOS DOM =============
     const elementos = {
@@ -25,7 +27,11 @@ document.addEventListener("DOMContentLoaded", function () {
         ordenar: document.getElementById("ordenar-por"),
         classe: document.getElementById("filtro-classe"),
         livroRef: document.getElementById("filtro-livro-ref"),
-        limpar: document.getElementById("limpar-filtros")
+        limpar: document.getElementById("limpar-filtros"),
+        listaSelecao: document.getElementById("lista-selecao"),
+        contadorSelecao: document.getElementById("contador-selecao"),
+        limparSelecao: document.getElementById("limpar-selecao"),
+        imprimir: document.getElementById("btn-imprimir")
     };
 
     // ============= FUNÇÕES PRINCIPAIS =============
@@ -52,9 +58,10 @@ document.addEventListener("DOMContentLoaded", function () {
     async function carregarBaseMagias() {
         const magias = await carregarArquivoMagias("./magias.json");
 
-        todasMagias = magias.map(criarCartaMagia);
+        todasMagias = magias.map((magia, indice) => criarCartaMagia(magia, indice));
         popularFiltroLivroRef(magias);
         ordenarOpcoesSelect();
+        atualizarListaSelecao();
     }
 
     async function carregarArquivoMagias(caminho) {
@@ -79,9 +86,10 @@ document.addEventListener("DOMContentLoaded", function () {
         livros.forEach((livro) => elementos.livroRef.add(new Option(livro, livro)));
     }
 
-    function criarCartaMagia(magia) {
+    function criarCartaMagia(magia, indice) {
         const carta = document.createElement("div");
         carta.className = "carta-magia";
+        carta.dataset.spellId = String(indice);
         carta.dataset.nome = magia.nomeBusca;
         carta.dataset.original = magia.originalBusca;
         carta.dataset.nivel = magia.nivel;
@@ -94,6 +102,17 @@ document.addEventListener("DOMContentLoaded", function () {
         carta.dataset.alcance = magia.alcance;
         carta.dataset.tempo = magia.tempo;
         carta.style.display = "none";
+
+        const controleSelecao = document.createElement("label");
+        controleSelecao.className = "selecao-carta";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.className = "checkbox-selecao-magia";
+        checkbox.dataset.spellId = String(indice);
+        checkbox.setAttribute("aria-label", `Selecionar ${magia.nome} para o PDF`);
+        const textoSelecao = document.createElement("span");
+        textoSelecao.textContent = "Incluir no PDF";
+        controleSelecao.append(checkbox, textoSelecao);
 
         const cabecalho = document.createElement("div");
         cabecalho.className = "magia-cabecalho";
@@ -122,7 +141,7 @@ document.addEventListener("DOMContentLoaded", function () {
         descricao.className = "magia-descricao";
         descricao.innerHTML = magia.descricaoHtml;
 
-        carta.append(cabecalho, descricao);
+        carta.append(controleSelecao, cabecalho, descricao);
         return carta;
     }
 
@@ -137,7 +156,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // 3. Carregamento progressivo automático
     function carregarMagias() {
-        if (carregando || indiceAtual >= magiasFiltradas.length) return;
+        if (imprimindo || carregando || indiceAtual >= magiasFiltradas.length) return;
 
         carregando = true;
         mostrarLoader(true);
@@ -148,9 +167,7 @@ document.addEventListener("DOMContentLoaded", function () {
             const fim = Math.min(indiceAtual + MAGIAS_POR_CARGA, magiasFiltradas.length);
 
             for (let i = indiceAtual; i < fim; i++) {
-                const clone = magiasFiltradas[i].cloneNode(true);
-                clone.style.display = "block";
-                fragment.appendChild(clone);
+                fragment.appendChild(clonarCarta(magiasFiltradas[i]));
             }
 
             elementos.listaMagias.appendChild(fragment);
@@ -158,6 +175,13 @@ document.addEventListener("DOMContentLoaded", function () {
             carregando = false;
             mostrarLoader(false);
         }, 150);
+    }
+
+    function clonarCarta(magia) {
+        const clone = magia.cloneNode(true);
+        clone.style.display = "block";
+        clone.querySelector(".checkbox-selecao-magia").checked = magiasSelecionadas.has(magia.dataset.spellId);
+        return clone;
     }
 
     // 4. Filtragem otimizada
@@ -288,7 +312,7 @@ document.addEventListener("DOMContentLoaded", function () {
     function configurarObservador() {
         const observer = new IntersectionObserver(
             (entries) => {
-                if (entries[0].isIntersecting && !carregando) {
+                if (entries[0].isIntersecting && !imprimindo && !carregando) {
                     carregarMagias();
                 }
             },
@@ -303,6 +327,38 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // ============= EVENT LISTENERS =============
     function configurarEventListeners() {
+        elementos.listaMagias.addEventListener("change", (evento) => {
+            const checkbox = evento.target.closest(".checkbox-selecao-magia");
+            if (!checkbox) return;
+
+            const id = checkbox.dataset.spellId;
+            if (checkbox.checked) {
+                magiasSelecionadas.add(id);
+            } else {
+                magiasSelecionadas.delete(id);
+            }
+
+            const cartaOriginal = todasMagias[Number(id)];
+            cartaOriginal.querySelector(".checkbox-selecao-magia").checked = checkbox.checked;
+            atualizarListaSelecao();
+        });
+
+        elementos.listaSelecao.addEventListener("click", (evento) => {
+            const botaoRemover = evento.target.closest("[data-remover-magia]");
+            if (!botaoRemover) return;
+
+            const id = botaoRemover.dataset.removerMagia;
+            magiasSelecionadas.delete(id);
+            todasMagias[Number(id)].querySelector(".checkbox-selecao-magia").checked = false;
+            elementos.listaMagias
+                .querySelectorAll(`.checkbox-selecao-magia[data-spell-id="${id}"]`)
+                .forEach((checkbox) => (checkbox.checked = false));
+            atualizarListaSelecao();
+        });
+
+        elementos.limparSelecao.addEventListener("click", limparSelecao);
+        elementos.imprimir.addEventListener("click", gerarPdfSelecionadas);
+
         // Debounce para busca
         let timeoutBusca;
         elementos.busca.addEventListener("input", () => {
@@ -337,64 +393,99 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
+    function atualizarListaSelecao() {
+        const selecionadas = [...magiasSelecionadas]
+            .map((id) => todasMagias[Number(id)])
+            .filter(Boolean)
+            .sort((a, b) => {
+                const nivelDiff = Number(a.dataset.nivel) - Number(b.dataset.nivel);
+                return nivelDiff || a.dataset.nome.localeCompare(b.dataset.nome, "pt-BR");
+            });
+
+        elementos.contadorSelecao.textContent =
+            `${selecionadas.length} ${selecionadas.length === 1 ? "magia selecionada" : "magias selecionadas"}`;
+        elementos.imprimir.disabled = selecionadas.length === 0;
+        elementos.limparSelecao.disabled = selecionadas.length === 0;
+        elementos.listaSelecao.replaceChildren();
+
+        if (selecionadas.length === 0) {
+            const vazio = document.createElement("p");
+            vazio.className = "selecao-vazia";
+            vazio.textContent = "Selecione magias para montar seu PDF.";
+            elementos.listaSelecao.append(vazio);
+            return;
+        }
+
+        let nivelAtual = null;
+        let listaNivel;
+
+        selecionadas.forEach((magia) => {
+            const nivel = magia.dataset.nivel;
+            if (nivel !== nivelAtual) {
+                nivelAtual = nivel;
+                const secao = document.createElement("section");
+                secao.className = "grupo-selecao";
+                const titulo = document.createElement("h3");
+                titulo.textContent = nivel === "0" ? "Truques" : `${nivel}º Círculo`;
+                listaNivel = document.createElement("ul");
+                secao.append(titulo, listaNivel);
+                elementos.listaSelecao.append(secao);
+            }
+
+            const item = document.createElement("li");
+            const nome = document.createElement("span");
+            nome.textContent = magia.querySelector(".magia-nome").textContent;
+            const remover = document.createElement("button");
+            remover.type = "button";
+            remover.className = "remover-magia-selecionada";
+            remover.dataset.removerMagia = magia.dataset.spellId;
+            remover.setAttribute("aria-label", `Remover ${nome.textContent} da seleção`);
+            remover.textContent = "×";
+            item.append(nome, remover);
+            listaNivel.append(item);
+        });
+    }
+
+    function limparSelecao() {
+        magiasSelecionadas.clear();
+        todasMagias.forEach((magia) => {
+            magia.querySelector(".checkbox-selecao-magia").checked = false;
+        });
+        elementos.listaMagias
+            .querySelectorAll(".checkbox-selecao-magia")
+            .forEach((checkbox) => (checkbox.checked = false));
+        atualizarListaSelecao();
+    }
+
+    async function gerarPdfSelecionadas() {
+        if (imprimindo || magiasSelecionadas.size === 0) return;
+
+        imprimindo = true;
+        elementos.imprimir.disabled = true;
+        const cartasVisiveis = Array.from(elementos.listaMagias.children);
+
+        try {
+            const fragmento = document.createDocumentFragment();
+            [...magiasSelecionadas]
+                .map((id) => todasMagias[Number(id)])
+                .filter(Boolean)
+                .sort((a, b) => {
+                    const nivelDiff = Number(a.dataset.nivel) - Number(b.dataset.nivel);
+                    return nivelDiff || a.dataset.nome.localeCompare(b.dataset.nome, "pt-BR");
+                })
+                .forEach((magia) => fragmento.append(clonarCarta(magia)));
+
+            elementos.listaMagias.replaceChildren(fragmento);
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            window.print();
+        } finally {
+            elementos.listaMagias.replaceChildren(...cartasVisiveis);
+            imprimindo = false;
+            elementos.imprimir.disabled = magiasSelecionadas.size === 0;
+        }
+    }
+
     // ============= INICIALIZAÇÃO =============
     inicializar();
 
-    // ========== BOTÃO DE IMPRESSÃO DEFINITIVO ==========
-    document.getElementById("btn-imprimir")?.addEventListener("click", async function () {
-        // 1. Salvar estado atual
-        const estadoOriginal = {
-            indiceAtual: indiceAtual,
-            carregando: carregando,
-            magiasExibidas: document.querySelectorAll('.carta-magia[style="display: block;"]').length
-        };
-
-        // 2. Forçar carregamento completo
-        indiceAtual = 0;
-        carregando = false;
-        elementos.listaMagias.innerHTML = "";
-
-        // 3. Carregar todas de uma vez (sem limite)
-        while (indiceAtual < magiasFiltradas.length) {
-            const fragment = document.createDocumentFragment();
-            const fim = magiasFiltradas.length; // Carrega todas
-
-            for (let i = indiceAtual; i < fim; i++) {
-                const clone = magiasFiltradas[i].cloneNode(true);
-                clone.style.display = "block";
-                fragment.appendChild(clone);
-            }
-
-            elementos.listaMagias.appendChild(fragment);
-            indiceAtual = fim;
-
-            // Pequeno delay para renderização
-            await new Promise((resolve) => setTimeout(resolve, 50));
-        }
-
-        // 4. Preparar para impressão
-        document.documentElement.classList.add("modo-impressao");
-
-        // 5. Esperar renderização completa
-        await new Promise((resolve) => setTimeout(resolve, 300));
-
-        // 6. Imprimir
-        window.print();
-
-        // 7. Restaurar estado original
-        document.documentElement.classList.remove("modo-impressao");
-        elementos.listaMagias.innerHTML = "";
-        indiceAtual = 0;
-        carregando = false;
-
-        // Recarregar o estado original
-        for (let i = 0; i < estadoOriginal.magiasExibidas && i < magiasFiltradas.length; i++) {
-            const clone = magiasFiltradas[i].cloneNode(true);
-            clone.style.display = "block";
-            elementos.listaMagias.appendChild(clone);
-        }
-
-        indiceAtual = estadoOriginal.magiasExibidas;
-        carregando = estadoOriginal.carregando;
-    });
 });

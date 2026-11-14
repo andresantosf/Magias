@@ -197,10 +197,6 @@
                     </div>
 
                     <button id="limpar-filtros" class="botao-limpar">Limpar Filtros</button>
-                    <div class="controles-impressao">
-                        <button id="btn-imprimir" class="botao-imprimir">🖨️ Imprimir*</button>
-                    </div>
-                    
                 </div>
             </div>
 
@@ -210,6 +206,16 @@
                     <div id="lista-magias" class="grid-magias"></div>
                 <div id="scroll-trigger" style="height: 50px"></div>
             </div>
+
+            <aside class="painel-selecao" aria-labelledby="titulo-selecao">
+                <h2 id="titulo-selecao">Magias selecionadas</h2>
+                <p id="contador-selecao" aria-live="polite">0 magias selecionadas</p>
+                <div id="lista-selecao">
+                    <p class="selecao-vazia">Selecione magias para montar seu PDF.</p>
+                </div>
+                <button id="limpar-selecao" class="botao-limpar" type="button" disabled>Limpar seleção</button>
+                <button id="btn-imprimir" class="botao-imprimir" type="button" disabled>Gerar PDF</button>
+            </aside>
 
             <script src="./Lista de Magias D&amp;D 2024 Beta _ Simple Skans_files/grimorio.js"></script>
         </div>
