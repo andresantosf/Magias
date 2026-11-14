@@ -24,6 +24,7 @@ document.addEventListener("DOMContentLoaded", function () {
         componentes: document.querySelectorAll(".componente"),
         ordenar: document.getElementById("ordenar-por"),
         classe: document.getElementById("filtro-classe"),
+        livroRef: document.getElementById("filtro-livro-ref"),
         limpar: document.getElementById("limpar-filtros")
     };
 
@@ -36,8 +37,8 @@ document.addEventListener("DOMContentLoaded", function () {
         } catch (erro) {
             console.error("Não foi possível carregar a lista de magias.", erro);
             elementos.listaMagias.textContent = window.location.protocol === "file:"
-                ? "O navegador bloqueia o carregamento de magias.json ao abrir o arquivo diretamente. Execute abrir-magias.bat nesta pasta e acesse http://127.0.0.1:8000/."
-                : `Não foi possível carregar magias.json (${erro.message}). Verifique se o arquivo está na pasta do site e tente recarregar.`;
+                ? "O navegador bloqueia o carregamento dos arquivos JSON ao abrir o HTML diretamente. Execute abrir-magias.bat nesta pasta e acesse http://127.0.0.1:8000/."
+                : `Não foi possível carregar os arquivos de magias (${erro.message}). Verifique se os arquivos JSON estão na pasta do site e tente recarregar.`;
             return;
         }
 
@@ -49,18 +50,33 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // 2. Carrega todas as magias uma vez
     async function carregarBaseMagias() {
-        const resposta = await fetch("./magias.json");
+        const magias = await carregarArquivoMagias("./magias.json");
+
+        todasMagias = magias.map(criarCartaMagia);
+        popularFiltroLivroRef(magias);
+        ordenarOpcoesSelect();
+    }
+
+    async function carregarArquivoMagias(caminho) {
+        const resposta = await fetch(caminho);
         if (!resposta.ok) {
-            throw new Error(`Falha ao carregar magias.json: HTTP ${resposta.status}`);
+            throw new Error(`${caminho}: HTTP ${resposta.status}`);
         }
 
         const magias = await resposta.json();
         if (!Array.isArray(magias)) {
-            throw new Error("O arquivo magias.json deve conter uma lista de magias.");
+            throw new Error(`${caminho} deve conter uma lista de magias.`);
         }
+        return magias;
+    }
 
-        todasMagias = magias.map(criarCartaMagia);
-        ordenarOpcoesSelect();
+    function popularFiltroLivroRef(magias) {
+        const livros = [...new Set(magias.map((magia) => magia.livroRef))].sort((a, b) =>
+            a.localeCompare(b, "pt-BR")
+        );
+
+        elementos.livroRef.replaceChildren(new Option("Todos os livros", ""));
+        livros.forEach((livro) => elementos.livroRef.add(new Option(livro, livro)));
     }
 
     function criarCartaMagia(magia) {
@@ -74,6 +90,7 @@ document.addEventListener("DOMContentLoaded", function () {
         carta.dataset.concentracao = String(magia.concentracao);
         carta.dataset.componentes = magia.componentes;
         carta.dataset.classes = magia.classes;
+        carta.dataset.livroRef = magia.livroRef;
         carta.dataset.alcance = magia.alcance;
         carta.dataset.tempo = magia.tempo;
         carta.style.display = "none";
@@ -92,6 +109,12 @@ document.addEventListener("DOMContentLoaded", function () {
         const metadados = document.createElement("div");
         metadados.className = "magia-metadados";
         metadados.innerHTML = magia.metadadosHtml;
+        const tags = metadados.querySelector(".tags");
+        if (magia.classes && !magia.metadadosHtml.includes(magia.classes)) {
+            adicionarMetadado(tags, "Classes:", magia.classes);
+        }
+        adicionarMetadado(tags, "Ritual:", magia.ritual ? "Sim" : "Não");
+        adicionarMetadado(tags, "Concentração:", magia.concentracao ? "Sim" : "Não");
 
         cabecalho.append(nome, original, metadados);
 
@@ -101,6 +124,15 @@ document.addEventListener("DOMContentLoaded", function () {
 
         carta.append(cabecalho, descricao);
         return carta;
+    }
+
+    function adicionarMetadado(tags, rotulo, valor) {
+        const linha = document.createElement("p");
+        const titulo = document.createElement("span");
+        titulo.className = "negrito";
+        titulo.textContent = `${rotulo} `;
+        linha.append(titulo, document.createTextNode(valor));
+        tags.append(linha);
     }
 
     // 3. Carregamento progressivo automático
@@ -136,6 +168,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const ritualAtivo = elementos.ritual.checked;
         const concentracaoAtiva = elementos.concentracao.checked;
         const classeSelecionada = elementos.classe.value;
+        const livroRefSelecionado = elementos.livroRef.value;
 
         const componentesSelecionados = Array.from(elementos.componentes)
             .filter((c) => c.checked)
@@ -167,7 +200,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 (!concentracaoAtiva || concentracao) &&
                 (componentesSelecionados.length === 0 ||
                     componentesSelecionados.every((c) => componentes.includes(c))) &&
-                (classeSelecionada === "" || classesMagia.includes(classeSelecionada.toLowerCase()))
+                (classeSelecionada === "" || classesMagia.includes(classeSelecionada.toLowerCase())) &&
+                (livroRefSelecionado === "" || magia.dataset.livroRef === livroRefSelecionado)
             );
         });
 
@@ -282,6 +316,7 @@ document.addEventListener("DOMContentLoaded", function () {
         elementos.ritual.addEventListener("change", aplicarFiltros);
         elementos.concentracao.addEventListener("change", aplicarFiltros);
         elementos.classe.addEventListener("change", aplicarFiltros);
+        elementos.livroRef.addEventListener("change", aplicarFiltros);
         elementos.ordenar.addEventListener("change", aplicarFiltros);
 
         // Componentes
@@ -295,6 +330,7 @@ document.addEventListener("DOMContentLoaded", function () {
             elementos.ritual.checked = false;
             elementos.concentracao.checked = false;
             elementos.classe.value = "";
+            elementos.livroRef.value = "";
             elementos.ordenar.value = "nome-asc";
             elementos.componentes.forEach((c) => (c.checked = false));
             aplicarFiltros();
