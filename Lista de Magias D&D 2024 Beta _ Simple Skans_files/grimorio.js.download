@@ -30,8 +30,17 @@ document.addEventListener("DOMContentLoaded", function () {
     // ============= FUNÇÕES PRINCIPAIS =============
 
     // 1. Inicialização
-    function inicializar() {
-        carregarBaseMagias();
+    async function inicializar() {
+        try {
+            await carregarBaseMagias();
+        } catch (erro) {
+            console.error("Não foi possível carregar a lista de magias.", erro);
+            elementos.listaMagias.textContent = window.location.protocol === "file:"
+                ? "O navegador bloqueia o carregamento de magias.json ao abrir o arquivo diretamente. Execute abrir-magias.bat nesta pasta e acesse http://127.0.0.1:8000/."
+                : `Não foi possível carregar magias.json (${erro.message}). Verifique se o arquivo está na pasta do site e tente recarregar.`;
+            return;
+        }
+
         configurarObservador();
         configurarEventListeners();
         aplicarFiltros();
@@ -39,10 +48,59 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     // 2. Carrega todas as magias uma vez
-    function carregarBaseMagias() {
-        todasMagias = Array.from(document.querySelectorAll(".carta-magia"));
-        todasMagias.forEach((m) => (m.style.display = "none"));
+    async function carregarBaseMagias() {
+        const resposta = await fetch("./magias.json");
+        if (!resposta.ok) {
+            throw new Error(`Falha ao carregar magias.json: HTTP ${resposta.status}`);
+        }
+
+        const magias = await resposta.json();
+        if (!Array.isArray(magias)) {
+            throw new Error("O arquivo magias.json deve conter uma lista de magias.");
+        }
+
+        todasMagias = magias.map(criarCartaMagia);
         ordenarOpcoesSelect();
+    }
+
+    function criarCartaMagia(magia) {
+        const carta = document.createElement("div");
+        carta.className = "carta-magia";
+        carta.dataset.nome = magia.nomeBusca;
+        carta.dataset.original = magia.originalBusca;
+        carta.dataset.nivel = magia.nivel;
+        carta.dataset.escola = magia.escola;
+        carta.dataset.ritual = String(magia.ritual);
+        carta.dataset.concentracao = String(magia.concentracao);
+        carta.dataset.componentes = magia.componentes;
+        carta.dataset.classes = magia.classes;
+        carta.dataset.alcance = magia.alcance;
+        carta.dataset.tempo = magia.tempo;
+        carta.style.display = "none";
+
+        const cabecalho = document.createElement("div");
+        cabecalho.className = "magia-cabecalho";
+
+        const nome = document.createElement("p");
+        nome.className = "magia-nome";
+        nome.textContent = magia.nome;
+
+        const original = document.createElement("span");
+        original.className = "ingles";
+        original.textContent = magia.original;
+
+        const metadados = document.createElement("div");
+        metadados.className = "magia-metadados";
+        metadados.innerHTML = magia.metadadosHtml;
+
+        cabecalho.append(nome, original, metadados);
+
+        const descricao = document.createElement("div");
+        descricao.className = "magia-descricao";
+        descricao.innerHTML = magia.descricaoHtml;
+
+        carta.append(cabecalho, descricao);
+        return carta;
     }
 
     // 3. Carregamento progressivo automático
